@@ -1,0 +1,65 @@
+name: Docker Image Push
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  push_to_registry:
+    name: Push Docker Images to Docker Hub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Build and push the client image
+      - name: Build and push client Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          push: true
+          tags: kalemat/client-docker-graphql:latest
+
+      # Build and push the server image
+      - name: Build and push server Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./server
+          file: ./server/Dockerfile
+          push: true
+          tags: kalemat/server-docker-graphql:latest
+
+      - name: Executing remote ssh ec2 server
+        uses: appleboy/ssh-action@master
+        with:
+            host: ${{ secrets.HOST_DNS_SERVER }}
+            username: ${{ secrets.EC2_USER }}
+            key: ${{ secrets.EC2_SSH_KEY }}
+            script: |
+                sudo docker stop server-docker-graphql  || echo "No existing process found"
+                sudo docker rm server-docker-graphql  || echo "No existing process found"
+                sudo docker pull mates182/server-docker-graphql:latest
+                sudo docker run --network=host -d -p 80:80 --name server-docker-graphql mates182/server-docker-graphql
+
+      - name: Executing remote ssh commands ec2 client
+        uses: appleboy/ssh-action@master
+        with:
+            host: ${{ secrets.HOST_DNS_CLIENT }}
+            username: ${{ secrets.EC2_USER }}
+            key: ${{ secrets.EC2_SSH_KEY }}
+            script: |
+                sudo docker stop client-docker-graphql  || echo "No existing process found"
+                sudo docker rm client-docker-graphql  || echo "No existing process found"
+                sudo docker pull mates182/client-docker-graphql:latest
+                sudo docker run --network=host -d -p 80:80 --name client-docker-graphql mates182/client-docker-graphql
+
+                
+                
